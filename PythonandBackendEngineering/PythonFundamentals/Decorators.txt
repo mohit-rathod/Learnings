@@ -1,0 +1,31 @@
+Q: Explain Python Decorators and explain it's working
+A: Python decorators are special design patterns that let you change or add features to a function or method without rewriting its original code. They work by taking your target function as an input, wrapping it inside a new inner function that adds extra tasks, and returning the updated wrapper function back to you.
+
+Core Concepts Behind Decorators
+To understand how decorators work, you need to know three basic properties of Python functions:
+• Functions are first-class objects: You can pass functions as arguments, assign them to variables, and return them from other functions just like numbers or strings.
+• Inner functions: You can define a brand-new function inside another function.
+• Closures: An inner function can remember and access the variables of its outer parent function, even after the outer function has finished running.
+Step-by-Step Working Mechanism
+When you use the @ symbol above a function, Python performs a hidden assignment behind the scenes.
+python
+def my_decorator(func):
+    def wrapper():
+        print("Something happens before the function.")
+        func()
+        print("Something happens after the function.")
+    return wrapper
+
+@my_decorator
+def say_hello():
+    print("Hello!")
+
+say_hello()
+Use code with caution.
+What Happens Under the Hood:
+1. Definition: Python defines my_decorator and say_hello.
+2. Wrapping: The line @my_decorator is a short way of writing say_hello = my_decorator(say_hello).
+3. Execution of Decorator: Python passes the say_hello function as the func argument into my_decorator.
+4. Creation of Wrapper: Inside my_decorator, a new inner function called wrapper is created. This wrapper holds the reference to the original say_hello inside its closure.
+5. Replacement: The decorator returns the wrapper function. Now, the name say_hello points to the wrapper instead of the original code.
+6. Calling the Function: When you run say_hello(), you are actually calling the wrapper function. It runs the "before" print statement, executes the original func() (which prints "Hello!"), and then runs the "after" print statement.

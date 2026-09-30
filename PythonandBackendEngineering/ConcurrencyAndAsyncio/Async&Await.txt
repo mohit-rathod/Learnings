@@ -1,0 +1,289 @@
+Q: How does the Python event loop manage async and await under the hood when handling 1000+ parallel assessments?
+A: The Python event loop manages concurrent jobs by multiplexing them onto a single thread using a cooperative task scheduler, switching execution contexts whenever a coroutine encounters an await statement rather than running jobs simultaneously on multiple CPU cores.
+While the fundamental mechanics of pausing and resuming coroutines handle the low-level waiting, coordinating multiple distinct jobs requires higher-level orchestration primitives provided by Python's [asyncio Library Documentation](https://docs.python.org/3/library/asyncio.html).
+## Job Orchestration and Scheduling
+When you launch multiple independent jobs, the event loop relies on structured concurrency tools to track their lifecycles:
+
+* asyncio.TaskGroup (Python 3.11+): Acts as a context manager that automatically handles a group of tasks. If any job in the group raises an unhandled exception, it cancels the remaining active jobs and exits cleanly, preventing orphaned tasks.
+* asyncio.gather(): Concurrently runs a sequence of awaitable objects. It aggregates all results into a list or propagates the first encountered exception depending on parameters like return_exceptions.
+* Task Ownership: Every job scheduled via create_task is registered in an internal set maintained by the loop, ensuring the garbage collector doesn't destroy the task mid-execution while it waits for an I/O trigger.
+
+## State Transitions and Exception Propagation
+Under the hood, the event loop tracks the lifecycle of every job through a state machine tied to its underlying Future object:
+
+   1. Pending: The job is waiting for an event (like a database query response or a timer) to complete.
+   2. Cancelled: If you invoke .cancel() on a task, the event loop injects a CancelledError exception into the coroutine at its current await boundary during the next loop iteration.
+   3. Finished: The coroutine returns a value or raises an exception, which the loop stores inside the Future object so parent orchestrators (like TaskGroup) can inspect or re-raise it.
+
+## Shifting from Concurrency to True Parallelism
+If your "parallel jobs" are CPU-heavy (such as data processing or image rendering) rather than waiting on network or disk I/O, a single-threaded event loop becomes a bottleneck. To manage these jobs correctly, the loop offloads them to a separate pool of workers:
+
+* loop.run_in_executor(): Takes a blocking synchronous function and sends it to a separate ThreadPoolExecutor (for thread-safe I/O) or ProcessDrivenExecutor (for true multi-core CPU parallelism).
+* The Bridge: The event loop creates a placeholder Future, lets the OS or external process handle the heavy lifting on a separate core or thread, and uses a self-pipe or socket pair to wake up the main loop once the worker finishes its job.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Q: Explain about how python's asyncio and await works
+A: At its core, asyncio acts as an efficient manager of a single-threaded "to-do list", allowing your code to switch tasks while waiting for slow operations like network calls, database queries, or file reads.
+Instead of running things truly simultaneously across multiple CPU cores (which is parallelism), it uses cooperative multitasking (which is concurrency). This means tasks willingly give up the spotlight when they are waiting for something else to finish.
+Here is exactly how async, await, and the event loop work together to make this happen.
+------------------------------
+## 1. The Blueprint: async def and Coroutines
+When you prefix a function with async, you are telling Python, "This is not a normal function. It is a coroutine."
+
+async def fetch_data():
+    return "Data ready!"
+
+
+* What happens: If you call fetch_data(), Python does not execute the code inside it immediately.
+* The output: It returns a coroutine object. Think of this object like a specialized Python generator that has the unique ability to pause its execution, remember its exact state (local variables, current line), and resume later.
+
+------------------------------
+## 2. The Trigger: The await Keyword
+The await keyword is the pause button. You can only use it inside an async def function, and you can only await objects that are "awaitable" (like another coroutine, a Task, or a Future).
+
+async def main():
+    print("Starting...")
+    result = await fetch_data()  # Pauses right here!
+    print(result)
+
+
+* What happens: When Python hits await fetch_data(), it pauses the main() coroutine right at that line.
+* Yielding Control: It hands control back up to the Event Loop, essentially saying, "I am waiting for fetch_data to finish. Go do other work in the meantime."
+
+------------------------------
+## 3. The Orchestrator: The Event Loop
+The Event Loop is the engine driving everything. It runs on a single thread and continuously ticks inside a while loop, managing two main structures:
+
+   1. The Ready Queue: A list of tasks that are ready to run right now.
+   2. The Selector (OS Polling): A mechanism that watches system sockets (network connections, file streams) to see if data has arrived.
+
+## The Step-by-Step Lifecycle
+To see them all working together, imagine you are fetching data from 3 different websites concurrently:
+
+import asyncio
+async def fetch_web(site_id):
+    print(f"Starting fetch for {site_id}")
+    # Simulates a non-blocking network wait
+    await asyncio.sleep(2) 
+    print(f"Finished fetch for {site_id}")
+    return f"Data {site_id}"
+async def main():
+    # Schedules all three to run concurrently
+    results = await asyncio.gather(fetch_web(1), fetch_web(2), fetch_web(3))
+    print(results)
+
+asyncio.run(main())
+
+When you execute asyncio.run(main()), the engine shifts into gear:
+
+   1. Scheduling: The event loop starts. asyncio.gather wraps all three fetch_web coroutines into Tasks and drops them into the Ready Queue.
+   2. Execution: The loop pulls fetch_web(1) out and runs it until it hits await asyncio.sleep(2). The loop registers a timer with the OS and pauses fetch_web(1).
+   3. Turn-Taking: Because fetch_web(1) yielded control, the loop immediately pulls fetch_web(2) from the queue and runs it until it hits the await statement. It repeats this for fetch_web(3).
+   4. The Wait: Now, all three tasks are paused, waiting for their 2-second timers. The event loop waits efficiently, asking the operating system to notify it when those 2 seconds are up.
+   5. Resuming: Once the timers fire, the loop places all three tasks back into the Ready Queue. It pops them out one by one, resumes them exactly where they left off, prints the "Finished" statements, and gathers the final results.
+
+------------------------------
+## Summary Checklist
+
+| Concept | What it actually is | Under the hood role |
+|---|---|---|
+| async def | Coroutine definition | Creates a function that can be paused and resumed like a generator. |
+| await | The yield signal | Pauses execution and yields control back to the event loop. |
+| Event Loop | Management engine | A single-threaded loop that runs ready tasks and polls the OS for I/O updates. |
+| Task | Coroutine wrapper | Tracks the state (Pending, Finished, Cancelled) of a scheduled coroutine. |
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Q: Explain asyncio methods and it's working
+A: Python’s asyncio module provides a deep set of tools divided into high-level methods (for writing application logic) and low-level methods (for building frameworks or managing loops).
+Here is a breakdown of the most essential asyncio methods, categorized by what they do, alongside how they interact with the internal event loop engine.
+------------------------------
+## 1. Loop Lifecycle & Management
+These methods control the birth, execution, and death of the event loop.
+
+* asyncio.run(coro)
+* What it does: The primary entry point for any async program. It creates a brand-new event loop, runs the passed coroutine until it finishes, shuts down asynchronous generators, and closes the loop.
+   * Under the hood: It cannot be called if another event loop is already running in the same thread. It abstracts away manual loop creation for safety.
+* asyncio.get_running_loop()
+* What it does: Returns the currently active event loop instance in the thread. If no loop is running, it raises a RuntimeError.
+   * Under the hood: Framework developers use this to schedule callbacks or network events directly onto the OS-level selector without creating a new loop.
+
+------------------------------
+## 2. Task Scheduling & Concurrency
+These methods take inert coroutines and turn them into active jobs that the event loop can execute.
+
+* asyncio.create_task(coro)
+* What it does: Wraps a coroutine into a Task object and immediately schedules it to run on the event loop's next tick.
+   * Under the hood: It drops the task into the loop's Ready Queue. The task begins running in the background even if you don't immediately await it.
+* asyncio.gather(*aws, return_exceptions=False)
+* What it does: Runs multiple awaitable objects concurrently. It blocks until all of them complete and returns a list of their results in the exact order they were passed.
+   * Under the hood: If return_exceptions is False, the first exception to occur immediately bubbles up and cancels nothing else. If True, exceptions are treated as successful return values inside the output list.
+* asyncio.TaskGroup() (Python 3.11+)
+* What it does: A modern context manager used to manage groups of concurrent tasks safely (Structured Concurrency).
+   * Under the hood: If any task within the group raises an unhandled exception, the group automatically cancels all other still-running tasks inside it before exiting. This prevents orphaned background tasks.
+
+------------------------------
+## 3. Delays & Timeouts
+Managing time is critical to prevent tasks from hanging indefinitely.
+
+* asyncio.sleep(delay)
+* What it does: Non-blockingly pauses execution for a given number of seconds.
+   * Under the hood: Instead of freezing the thread like time.sleep(), it creates a timer handle inside the event loop. The loop temporarily sets the current coroutine aside and polls the OS until the requested time has elapsed.
+* asyncio.timeout(delay) (Python 3.11+)
+* What it does: An asynchronous context manager that applies a strict deadline to all code running inside it.
+   * Under the hood: If the code inside the block takes longer than delay seconds, the event loop injects a TimeoutError directly into the executing coroutine on its next step.
+
+------------------------------
+## 4. Interoperating with Synchronous Code
+Because Python's loop is single-threaded, blocking synchronous functions can completely freeze execution. These methods bridge that gap.
+
+* asyncio.to_thread(func, *args, **kwargs) (Python 3.14+ / 3.9+)
+* What it does: Modern, high-level way to run a blocking, synchronous function in a separate thread without blocking the event loop.
+   * Under the hood: It automatically spins up a ThreadPoolExecutor behind the scenes, leaves the main thread free to handle async events, and passes a Future back to the loop when the thread finishes.
+
+------------------------------
+## Comparative Overview of Core Methods
+
+| Method | Returns | Blocking? | Primary Use Case |
+|---|---|---|---|
+| asyncio.run() | The return value of the main coroutine | Yes (blocks the main thread) | Starting your async application. |
+| asyncio.create_task() | A Task object | No (schedules background execution) | Fire-and-forget concurrency. |
+| asyncio.gather() | A list of all results | Yes (awaits all items inside it) | Mass aggregating parallel I/O requests. |
+| asyncio.sleep() | None | No (yields control to the loop) | Throttling, polling, or mock delays. |
+| asyncio.to_thread() | The return value of the sync function | No (yields while thread runs) | Running heavy math or legacy synchronous SDKs. |
+
+------------------------------
+## Complete Structural Example
+Here is how these methods coordinate inside a single script:
+
+import asyncioimport time
+def blocking_io_bound_file_save():
+    # This would normally freeze the event loop
+    time.sleep(1) 
+    return "File Saved"
+async def fetch_api(item_id):
+    await asyncio.sleep(0.5) # Non-blocking delay
+    return f"Data {item_id}"
+async def main():
+    # 1. Using a TaskGroup for structured concurrency
+    async with asyncio.TaskGroup() as tg:
+        task1 = tg.create_task(fetch_api(1))
+        task2 = tg.create_task(fetch_api(2))
+    
+    # Execution pauses here until both tasks in the group finish
+    print(task1.result(), task2.result())
+
+    # 2. Applying a timeout to a slow process
+    try:
+        async with asyncio.timeout(0.2):
+            await fetch_api(99)
+    except TimeoutError:
+        print("API call took too long!")
+
+    # 3. Offloading a blocking file write safely
+    result = await asyncio.to_thread(blocking_io_bound_file_save)
+    print(result)
+# Start the life cycle of the application
+asyncio.run(main())
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Q: Difference between Couroutine and a Task?
+A: A coroutine is the paused/resumed function blueprint created by async def, whereas a task is a scheduled wrapper that actively runs that coroutine inside the event loop.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Q: Explain the practical difference between concurrency and parallelism
+A: The practical difference comes down to execution structure: concurrency is about dealing with lots of things at once (smart multitasking), while parallelism is about doing lots of things at once (simultaneous execution).
+To visualize this, imagine a busy restaurant kitchen:
+
+* Concurrency (1 Chef): A single chef chops onions, pauses to check a boiling pot of pasta, and flips a steak. The chef switches between tasks efficiently. Work progresses on multiple dishes, but only one action happens at any exact millisecond.
+* Parallelism (3 Chefs): Three chefs work side by side at the exact same time. One chops onions, one stirs the pasta, and one flips the steak simultaneously.
+
+------------------------------
+## Direct Comparison
+
+| Feature | Concurrency 🔀 | Parallelism ⚡ |
+|---|---|---|
+| Core Concept | Managing multiple tasks by switching contexts rapidly. | Executing multiple tasks physically at the same time. |
+| Hardware Requirement | Can run efficiently on a single CPU core. | Requires multiple CPU cores or multiple processors. |
+| Best Used For | I/O-Bound tasks (waiting on network APIs, web scraping, database queries). | CPU-Bound tasks (video rendering, machine learning, heavy math calculations). |
+| Python Tool | asyncio or threading (limited by the Global Interpreter Lock). | multiprocessing or external libraries like NumPy/PyTorch. |
+
+------------------------------
+## Practical Example: Python Implementation## 1. The Concurrent Approach (Dealing with Waits)
+If you need to download 100 profile pictures from a website, your code spends 99% of its time waiting for the server to reply over the internet.
+Using asyncio (Concurrency), Python starts the first download, instantly switches to start the second, then the third, and so on. The single CPU core isn't working harder; it is simply avoiding idling while waiting for the network.
+
+# Concurrency: Efficiently juggling I/O wait times on one coreimport asyncio
+async def fetch_avatar(user_id):
+    await asyncio.sleep(1) # Simulating network delay
+    return f"Avatar {user_id}"
+
+## 2. The Parallel Approach (Brute Force Math)
+If you need to resize 100 high-resolution images, your CPU must actively compute pixel math for every single image. A single-threaded concurrent loop cannot speed this up because the core is completely maxed out.
+Using multiprocessing (Parallelism), Python spins up distinct processes across Core 1, Core 2, Core 3, and Core 4. Each core crunches the numbers for a different image at the exact same physical moment.
+
+# Parallelism: Using 4 separate CPU cores to do math at the exact same timefrom multiprocessing import Pool
+def resize_image(image_path):
+    # Heavy pixel-crunching math happens here
+    return "Resized Image"
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Q: When using asyncio.gather(), how do you handle partial failures—where some coroutines succeed and others fail—without losing the successful results?
+A: To handle partial failures when using asyncio.gather() without losing successful results, you must set the return_exceptions=True keyword argument.
+By default, asyncio.gather() immediately propagates the first exception it encounters, meaning you lose easy access to any successful return values. Enabling return_exceptions=True tells gather to catch exceptions and treat them as successful return values instead, placing the Exception object directly inside the returned results list.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Q: What causes event loop starvation in Python, and how do you prevent it?
+A: Event loop starvation in Python occurs when the single-threaded asyncio event loop is blocked by a long-running operation, preventing it from executing other scheduled coroutines, handling I/O events, or servicing timers.
+Because Python's asyncio relies on cooperative multitasking, the loop can only switch contexts when a coroutine explicitly yields control using an await statement. If a single task runs uninterrupted, the entire application grinds to a halt.
+------------------------------
+## Core Causes of Starvation
+
+* CPU-Bound Code: Executing heavy mathematical computations, data processing (like pandas or numpy operations), or cryptographic functions directly inside a coroutine.
+* Blocking I/O Calls: Using standard, synchronous library calls that block the thread—such as time.sleep(), the requests library, or traditional database drivers (psycopg2, sqlite3)—instead of their async counterparts (asyncio.sleep(), httpx, asyncpg).
+* Infinite or Dense Loops: A while True or very long for loop inside an async def function that does not contain any await expressions.
+
+------------------------------
+## How to Prevent It
+To keep the event loop responsive, you must offload blocking work or force the loop to yield control periodically.
+## 1. Offload Heavy Work to Thread or Process Pools
+For legacy synchronous code or CPU-bound tasks, use asyncio.to_thread() (Python 3.9+) or loop.run_in_executor(). This running mechanism offloads the blocking execution to a separate thread or worker process, leaving the main thread's event loop free to run.
+
+import asyncioimport time
+def blocking_cpu_task():
+    # Simulate a heavy CPU or synchronous I/O bound task
+    time.sleep(2)
+    return "Done"
+async def main():
+    # Safely offload to a thread pool without freezing the loop
+    result = await asyncio.to_thread(blocking_cpu_task)
+    print(result)
+
+asyncio.run(main())
+
+## 2. Introduce Artificial Yield Points
+If you must run a long, dense loop inside a coroutine that cannot be easily broken up into external threads, you can force it to yield control back to the event loop on every iteration (or every N iterations) using await asyncio.sleep(0).
+
+async def dense_loop_task():
+    for i in range(1000000):
+        # Do a small bit of work
+        process_chunk(i)
+        
+        # Yield control back to the loop so other tasks can run
+        if i % 1000 == 0:
+            await asyncio.sleep(0)
+
+## 3. Use Native Async Libraries
+Ensure your architectural stack is built on non-blocking infrastructure:
+
+* Replace requests with httpx or aiohttp.
+* Replace time.sleep() with asyncio.sleep().
+* Replace synchronous ORMs/drivers with async variants like SQLAlchemy (async) or motor.
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Q: How to utilize asynchronous context managers (async with) for resource and connection management
+A: Asynchronous context managers utilize async with and special methods (__aenter__ and __aexit__) to non-blockingly acquire and release network connections, database sessions, and locks.
+

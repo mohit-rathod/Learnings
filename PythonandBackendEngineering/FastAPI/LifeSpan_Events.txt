@@ -1,0 +1,75 @@
+Q: What is a Lifespan Event?
+A: The Lifespan feature in FastAPI allows you to define logic that executes before the application starts taking requests, and after the application finishes handling requests.
+It acts as a setup and teardown manager for your entire application's lifecycle. This is where you initialize global resources—like database connection pools, machine learning models, or external API clients—and safely clean them up when the server shuts down.
+------------------------------
+## How Lifespan Operates
+FastAPI handles lifespan logic using an asynccontextmanager from Python's standard contextlib library. You define a single function containing a yield statement and pass it to the FastAPI(lifespan=...) application instance.
+Everything written before the yield runs during startup. Everything written after the yield runs during shutdown.
+
+from contextlib import asynccontextmanagerfrom fastapi import FastAPI
+# 1. Define external resources placeholderml_models = {}
+# 2. Create the lifespan context manager
+@asynccontextmanagerasync def lifespan(app: FastAPI):
+    # --- STARTUP LOGIC ---
+    # Executes before the server starts receiving requests
+    print("Application startup: Loading heavy ML model...")
+    ml_models["sentiment_analyzer"] = lambda x: "positive" 
+    
+    yield  # Handover control back to FastAPI. The app is now running!
+    
+    # --- SHUTDOWN LOGIC ---
+    # Executes when the server process is stopped (e.g., Ctrl+C)
+    print("Application shutdown: Cleaning up models and connections...")
+    ml_models.clear()
+# 3. Register the lifespan with your FastAPI appapp = FastAPI(lifespan=lifespan)
+
+@app.get("/predict")async def predict():
+    # Use the globally loaded resource inside your routes
+    result = ml_models["sentiment_analyzer"]("FastAPI is great!")
+    return {"prediction": result}
+
+## The Execution Flow:
+
+   1. Server Launch: You start your application server (e.g., using uvicorn main:app).
+   2. Startup Trigger: FastAPI halts incoming requests, enters your lifespan manager, and executes the setup lines.
+   3. Application Yield: The framework hits the yield keyword. It opens up network sockets, prints the startup completion messages, and begins processing live client HTTP requests.
+   4. Server Termination: The server receives a termination signal. FastAPI stops listening to new requests, waits for active processing to conclude, and jumps back into the lifespan function directly after the yield line to gracefully handle cleanup.
+
+------------------------------
+## Practical Applications## 1. Database Connection Pooling
+Opening a new database connection for every single HTTP request adds immense latency. Instead, you create a persistent connection pool once on startup and tear it down cleanly upon server shutdown.
+
+import psycopgfrom contextlib import asynccontextmanagerfrom fastapi import FastAPI
+
+@asynccontextmanagerasync def database_lifespan(app: FastAPI):
+    # Setup global connection pool on startup
+    app.state.db_pool = psycopg.AsyncConnectionPool(conninfo="postgresql://...")
+    await app.state.db_pool.open()
+    
+    yield
+    
+    # Close all open connections gracefully on shutdown
+    await app.state.db_pool.close()
+
+(Note: app.state is a safe, built-in dictionary-like object intended to share global states across routes).
+## 2. Reusing HTTP Clients (httpx)
+If your application frequently calls external microservices or third-party APIs, creating an httpx.AsyncClient globally inside a lifespan ensures underlying TCP connection reuse, drastically increasing network speed.
+
+import httpxfrom contextlib import asynccontextmanagerfrom fastapi import FastAPI
+
+@asynccontextmanagerasync def api_client_lifespan(app: FastAPI):
+    async with httpx.AsyncClient() as client:
+        app.state.http_client = client
+        yield
+    # Client closes automatically when exiting the context block
+
+------------------------------
+## Comparison: Lifespan vs. Old Startup/Shutdown Events
+Before FastAPI introduced Lifespan, state management relied on the @app.on_event("startup") and @app.on_event("shutdown") decorators.
+
+| Feature | Lifespan Context (lifespan) | Old Event Decorators (on_event) |
+|---|---|---|
+| Status | Recommended Standard | Deprecated / Discouraged |
+| State Sharing | Easy (Via context managers or using app.state) | Difficult (Relied on global variables) |
+| Exception Handling | Robust (A crash in startup cleanly executes your finally blocks) | Fragile (If startup crashed, your shutdown cleanup code never ran) |
+| Structure | Unified single function | Split into multiple separate functions |

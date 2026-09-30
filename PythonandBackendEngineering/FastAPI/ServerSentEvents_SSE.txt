@@ -1,0 +1,35 @@
+Server-Sent Events (SSE) is a standardized web technology that enables a browser to receive automatic updates from a server via a long-lived HTTP connection, operating on a unidirectional (one-way) data flow from the server to the client.
+Instead of the client repeatedly asking the server for new data (polling), the client opens a single HTTP connection once. The server then keeps this connection open and streams text-based updates down the wire whenever new data becomes available. You can read the technical specification details on the MDN Web Docs for SSE.
+------------------------------
+## How SSE Operates
+The underlying mechanics of SSE rely completely on standard, native HTTP protocols rather than specialized TCP socket layers.
+
+   1. The Request: The client browser sends a standard HTTP GET request to a server endpoint, setting the Accept header to text/event-stream.
+   2. The Connection: The server acknowledges the request, responds with a Content-Type: text/event-stream header, and deliberately keeps the connection open.
+   3. The Data Stream: Whenever an event happens, the server pushes data formatted as plain text blocks separated by newline characters. A basic payload looks like this:
+   
+   data: {"message": "New price update", "price": 105.50}
+   \n\n
+   
+   4. Auto-Reconnection: If the network drops or the connection closes unexpectedly, browser clients implementing the standard EventSource API will automatically attempt to reconnect to the server after a short delay.
+
+------------------------------
+## Practical Applications & Use Cases
+
+* Live Financial Feeds: Streaming real-time stock prices, crypto tickers, or currency exchange rates.
+* Social Media Notifications: Pushing live activity alerts, new chat messages, or feed updates to a dashboard.
+* Progress Trackers: Monitoring long-running background tasks, like file processing, AI text generation (LLM token streaming), or software deployments.
+* Live Dashboards: Updating system metrics, server logs, or IoT sensor data without refreshing the page.
+
+------------------------------
+## SSE vs. WebSockets vs. Polling
+
+| Feature | Server-Sent Events (SSE) | WebSockets | HTTP Polling |
+|---|---|---|---|
+| Direction | Unidirectional (Server → Client) | Full-Duplex (Two-way) | Unidirectional (Client requests) |
+| Protocol | Standard HTTP | Upgraded TCP connection | Standard HTTP |
+| Complexity | Low (Built into browser via EventSource) | High (Requires custom framing) | Very Low |
+| Auto-Reconnect | Built-in automatically | Manual implementation needed | Handled per request |
+
+Would you like to see how to implement an SSE endpoint in FastAPI using an EventSourceResponse or native streaming generators?
+

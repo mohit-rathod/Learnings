@@ -1,0 +1,139 @@
+Q: Explain OOPS
+A: Object-Oriented Design (OOD) in Python centers around two core frameworks: the Four Pillars of OOP (the fundamental building blocks) and the SOLID Principles (the rules for designing maintainable and scalable systems). [1, 2] 
+
+------------------------------
+## Part 1: The Four Pillars of OOP
+The four pillars form the basis of organizing data and behavior into structural templates. [2, 3] 
+## 1. Encapsulation
+Encapsulation bundles data (attributes) and methods together and restricts direct external access to prevent accidental modification. In Python, we denote "private" variables using a double underscore (__) prefix. [2, 4, 5] 
+
+class BankAccount:
+    def __init__(self, owner, balance):
+        self.owner = owner
+        self.__balance = balance  # Private attribute
+
+    # Getter
+    def get_balance(self):
+        return self.__balance
+
+    # Setter with validation
+    def deposit(self, amount):
+        if amount > 0:
+            self.__balance += amount
+
+## 2. Abstraction
+Abstraction hides complex implementation details and only exposes simple, essential functionality. Python handles this using the abc (Abstract Base Classes) module. [2, 3, 6] 
+
+from abc import ABC, abstractmethod
+class Vehicle(ABC):  # Abstract Class
+    @abstractmethod
+    def start_engine(self):
+        pass
+class Car(Vehicle):
+    def start_engine(self):
+        return "Car engine started. Vroom!"
+
+## 3. Inheritance
+Inheritance allows a child class to derive properties and methods from a parent class, promoting code reuse. [2, 3] 
+
+class Animal:
+    def eat(self):
+        return "Eating..."
+class Dog(Animal):  # Inherits from Animal
+    def bark(self):
+        return "Woof!"
+
+## 4. Polymorphism
+Polymorphism means "many forms." It lets different classes define methods with the same name but distinct underlying behaviors. [2, 7] 
+
+class Cat:
+    def make_sound(self): return "Meow"
+class Dog:
+    def make_sound(self): return "Woof"
+# Unified interface handling different typesdef animal_sound(animal_obj):
+    print(animal_obj.make_sound())
+
+------------------------------
+## Part 2: The SOLID Design Principles
+While the pillars provide tools, the SOLID principles represent software design rules to keep code flexible and maintainable as projects scale. [1, 8] 
+
+| Principle | Core Concept | Simple Python Context |
+|---|---|---|
+| Single Responsibility (SRP) | A class should have one reason to change. | Don't make a class calculate metrics and save them to a file. |
+| Open/Closed (OCP) | Open for extension, closed for modification. | Add new features by writing new classes, not changing existing ones. |
+| Liskov Substitution (LSP) | Derived classes must be substitutable for base classes. | Subclasses shouldn't break or narrow the logic of the parent. |
+| Interface Segregation (ISP) | Lean interfaces over bloated options. | Don't force a class to inherit methods it doesn't need. |
+| Dependency Inversion (DIP) | Depend on abstractions, not concrete details. | High-level business logic shouldn't hard-code low-level utility classes. |
+
+## Deep Dive Code Examples## 1. Single Responsibility Principle (SRP)
+
+* 
+* Bad: A Report class that generates data and prints it to log files.
+* Good: Split data generation from formatting/printing.
+* 
+
+class Report:
+    def __init__(self, data):
+        self.data = data
+
+    def generate_content(self):
+        return f"Report Data: {self.data}"
+class ReportPrinter:
+    def print_to_console(self, report: Report):
+        print(report.generate_content())
+
+## 2. Open/Closed Principle (OCP)
+Instead of modifying a central conditional block every time a new payment type arrives, use abstraction.
+
+from abc import ABC, abstractmethod
+class PaymentMethod(ABC):
+    @abstractmethod
+    def process(self, amount): pass
+class CreditCardPayment(PaymentMethod):
+    def process(self, amount): print(f"Charging ${amount} via Credit Card")
+class PayPalPayment(PaymentMethod):
+    def process(self, amount): print(f"Charging ${amount} via PayPal")
+# Closed for modification; open to accept any new PaymentMethod classclass PaymentProcessor:
+    def execute_payment(self, payment: PaymentMethod, amount):
+        payment.process(amount)
+
+## 3. Liskov Substitution Principle (LSP)
+A classic violation is making an Ostrich class inherit from a Bird class that implements a .fly() method, since ostriches cannot fly.
+
+class Bird:
+    def move(self): return "Moving forward"
+class FlyingBird(Bird):
+    def fly(self): return "Flying high"
+class Ostrich(Bird):  # Safe substitution; does not inherit un-executable actions
+    def run(self): return "Running fast"
+
+## 4. Interface Segregation Principle (ISP)
+Python handles interfaces via abstract classes or protocols. Avoid forcing all-in-one interfaces. [6] 
+
+# Instead of one huge Worker interface, split responsibilitiesclass Workable(ABC):
+    @abstractmethod
+    def work(self): pass
+class Feedable(ABC):
+    @abstractmethod
+    def eat(self): pass
+class HumanWorker(Workable, Feedable):
+    def work(self): return "Coding..."
+    def eat(self): return "Eating lunch..."
+class RobotWorker(Workable):  # Free from implementing unused 'eat' method
+    def work(self): return "Assembling hardware..."
+
+## 5. Dependency Inversion Principle (DIP)
+High-level application modules should rely on abstract interfaces rather than concrete subclasses. [8, 9] 
+
+class Switchable(ABC):
+    @abstractmethod
+    def turn_on(self): pass
+class LightBulb(Switchable):
+    def turn_on(self): return "Bulb glowing"
+class ElectricPowerSwitch:
+    # Depends on Switchable abstraction, not a specific LightBulb class
+    def __init__(self, client: Switchable):
+        self.client = client
+
+    def press(self):
+        return self.client.turn_on()

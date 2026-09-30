@@ -1,0 +1,77 @@
+## What is Middleware?
+Middleware in FastAPI is a function that runs before every request is processed by your specific path operations, and after every response is generated.
+It acts as a gatekeeper or an intermediary layer that wraps your entire application. When a request comes in from a client, the middleware intercepts it, processes it or modifies it, passes it to the intended path operation, receives the generated response, modifies or logs that response, and finally sends it back to the client.
+------------------------------
+## How Middleware Operates
+FastAPI is built on top of Starlette, which provides a standard way to implement middleware using the @app.middleware("http") decorator.
+The middleware function accepts an incoming Request object and a call_next function (which forwards the request to your endpoint or subsequent middleware). It must always return a Response object.
+
+import timefrom fastapi import FastAPI, Request
+app = FastAPI()
+
+@app.middleware("http")async def add_process_time_header(request: Request, call_next):
+    # 1. Logic executed BEFORE the request reaches the endpoint
+    start_time = time.perf_counter()
+    
+    # 2. Forward the request to the endpoint or next middleware
+    response = await call_next(request)
+    
+    # 3. Logic executed AFTER the endpoint finishes, before sending to client
+    process_time = time.perf_counter() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    
+    return response
+
+## The Execution Lifecycle:
+
+   1. Request Interception: The middleware receives the HTTP request first. You can inspect or modify headers, cookies, or the path.
+   2. Next Step Execution: Calling await call_next(request) passes the request down the chain. If something goes wrong or validation fails before this, you can return a custom response early and short-circuit the route entirely.
+   3. Response Interception: Once call_next resolves, you receive the generated response. You can inject custom headers, compress the body, or log performance metrics.
+
+------------------------------
+## Practical Applications## 1. CORS (Cross-Origin Resource Sharing)
+If your frontend is hosted on a different domain than your backend, your browser will block requests by default. FastAPI provides a built-in middleware class to safely handle these permissions.
+
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://example.com"], # Trusted frontend domains
+    allow_credentials=True,
+    allow_methods=["*"],                  # HTTP methods allowed (GET, POST, etc.)
+    allow_headers=["*"],                  # Headers allowed
+)
+
+## 2. Request Logging & Monitoring
+You can use middleware to globally log the performance, HTTP status code, and endpoint paths of every single interaction to monitor application health.
+
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
+@app.middleware("http")async def log_requests(request: Request, call_next):
+    logging.info(f"Incoming request: {request.method} {request.url.path}")
+    response = await call_next(request)
+    logging.info(f"Response status: {response.status_code}")
+    return response
+
+## 3. Trusted Hosts (Security)
+To protect your application against HTTP Host Header attacks, you can enforce that your backend only responds to explicitly allowed host domains.
+
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+
+app.add_middleware(
+    TrustedHostMiddleware, 
+    allowed_hosts=["example.com", "*.example.com", "localhost"]
+)
+
+------------------------------
+## Comparison: Middleware vs. Dependency Injection
+While both middleware and dependencies run before and after your routes, they are optimized for different tasks:
+
+| Feature | Middleware | Dependency Injection |
+|---|---|---|
+| Scope | Global. Runs on every single request to the application. | Granular. Runs only on specific routes where you declare it. |
+| Access | Has raw access to the low-level ASGI request and response objects. | Has access to high-level parsed path parameters, query parameters, and Pydantic models. |
+| Best Used For | Cross-cutting concerns (CORS, global logging, GZip compression, custom headers). | Business logic, authentication/authorization checks, and database session injections. |
+
