@@ -6,11 +6,11 @@ tool invocations, and course corrections to achieve it.
 
 While a traditional large language model (LLM) or a hard-coded prompt chain acts as a reactive, "single-turn" text transformer, an autonomous agent functions as a stateful, goal-driven decision engine.
 
-Capability	    Single-Step LLM Call	                                                    Hard-Coded Prompt Chain	                                                                        Autonomous AI Agent
-Control Flow	Stateless / Reactive: Input text goes in, output text comes out.	        Deterministic / Linear: Follows a strict, human-defined pipeline (e.g., Step A → Step B).	    Dynamic / Non-deterministic: Evaluates the state, plans the next step, and adapts mid-process.
-Tool Execution	None: Cannot natively interact with external applications.	                Static: Executes pre-defined function calls at explicit checkpoints.	                        Autonomous: Dynamically selects, parameters, and executes tools from a set inventory based on context.
-Memory Systems	None: Forgets everything as soon as the prompt token generation finishes.	Session-Bound: Passes context linearly from one hard-coded prompt block to the next.	        Persistent: Integrates short-term execution memory with long-term semantic memory databases.
-Error Handling	Fails immediately: Halts execution or outputs a hallucination if confused.	Fragile: Breaks completely if an intermediate API payload fails or returns unexpected data.	    Self-Reflective: Inspects its own mistakes, catches errors, and alters its strategy to try again.
+Capability	     Single-Step LLM Call	                                                    Hard-Coded Prompt Chain	                                                                    Autonomous AI Agent
+Control Flow	     Stateless / Reactive: Input text goes in, output text comes out.	            Deterministic / Linear: Follows a strict, human-defined pipeline (e.g., Step A → Step B).	   Dynamic / Non-deterministic: Evaluates the state, plans the next step, and adapts mid-process.
+Tool Execution	     None: Cannot natively interact with external applications.	                 Static: Executes pre-defined function calls at explicit checkpoints.	                       Autonomous: Dynamically selects, parameters, and executes tools from a set inventory based on context.
+Memory Systems	     None: Forgets everything as soon as the prompt token generation finishes.	  Session-Bound: Passes context linearly from one hard-coded prompt block to the next.	        Persistent: Integrates short-term execution memory with long-term semantic memory databases.
+Error Handling	     Fails immediately: Halts execution or outputs a hallucination if confused.	  Fragile: Breaks completely if an intermediate API payload fails or returns unexpected data.	   Self-Reflective: Inspects its own mistakes, catches errors, and alters its strategy to try again.
 
 
 The Core Components of an Agentic Architecture
@@ -125,7 +125,7 @@ By migrating from standard chains to ToT or GoT, an agent moves away from "fast 
 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-Q: What is the difference between a reactive agent and a proactive (goal-driven) agent
+Q: What is the difference between a reactive agent and a proactive (goal-driven) agent?
 A: The fundamental difference between a reactive agent and a proactive (goal-driven) agent lies in how they choose their actions: a reactive agent responds directly to immediate external stimuli or events without considering the future, whereas a proactive agent acts based on an internal goal and actively plans a sequence of steps to achieve it.
 ------------------------------
 ## Key Structural Differences
